@@ -1,105 +1,21 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
 import "./App.css";
-
-type Todo = {
-  id: string;
-  title: string;
-  isCompleted: boolean;
-};
-
-type HealthResponse = {
-  status: string;
-  timestamp: string;
-};
-
-const apiBaseUrl = (
-  import.meta.env.VITE_API_BASE_URL?.trim() || "http://localhost:5271"
-).replace(/\/$/, "");
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with status ${response.status}`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
-}
+import { useHealth } from "./hooks/useHealth";
+import { useTodos } from "./hooks/useTodos";
+import { apiBaseUrl } from "./lib/api";
 
 function App() {
-  const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
-
-  const todosQuery = useQuery({
-    queryKey: ["todos"],
-    queryFn: () => request<Todo[]>("/api/todos/"),
-  });
-
-  const healthQuery = useQuery({
-    queryKey: ["health"],
-    queryFn: () => request<HealthResponse>("/health"),
-    retry: false,
-    refetchInterval: 30000,
-  });
-
-  const createTodoMutation = useMutation({
-    mutationFn: (nextTitle: string) =>
-      request<Todo>("/api/todos/", {
-        method: "POST",
-        body: JSON.stringify({ title: nextTitle }),
-      }),
-    onSuccess: async () => {
-      setTitle("");
-      await queryClient.invalidateQueries({ queryKey: ["todos"] });
-    },
-  });
-
-  const updateTodoMutation = useMutation({
-    mutationFn: (todo: Todo) =>
-      request<Todo>(`/api/todos/${todo.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          title: todo.title,
-          isCompleted: !todo.isCompleted,
-        }),
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["todos"] });
-    },
-  });
-
-  const deleteTodoMutation = useMutation({
-    mutationFn: (id: string) =>
-      request<void>(`/api/todos/${id}`, {
-        method: "DELETE",
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["todos"] });
-    },
-  });
-
-  const remainingCount = useMemo(
-    () => todosQuery.data?.filter((todo) => !todo.isCompleted).length ?? 0,
-    [todosQuery.data],
-  );
-
-  const completedCount = (todosQuery.data?.length ?? 0) - remainingCount;
-  const isBusy =
-    createTodoMutation.isPending ||
-    updateTodoMutation.isPending ||
-    deleteTodoMutation.isPending;
+  const {
+    todosQuery,
+    createTodoMutation,
+    updateTodoMutation,
+    deleteTodoMutation,
+    remainingCount,
+    completedCount,
+    isBusy,
+  } = useTodos();
+  const healthQuery = useHealth();
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,6 +26,7 @@ function App() {
     }
 
     createTodoMutation.mutate(nextTitle);
+    setTitle("");
   }
 
   return (
